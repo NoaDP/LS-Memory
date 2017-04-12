@@ -1,0 +1,1410 @@
+package Memo_2;
+
+import javax.imageio.ImageIO;
+import javax.swing.Icon;
+import javax.swing.ImageIcon;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.Timer;
+
+import view.VentanaError;
+import Memo1_1.CircleProgressBar;
+import controller.ButtonController;
+import network.Client;
+import network.ServerConnection;
+
+import java.awt.*;
+import java.awt.event.*;
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Collections;
+
+@SuppressWarnings("serial")
+public class BoardMachine extends JFrame implements WindowListener{
+
+	/**
+	 * La classe BoardMachine és la encarregada de crear i realitzar les modificcacions en el tauler de la modalitat de joc vs.Machine. 
+	 * Aquesta reb com a paràmetres el nombre de files i columnes de cartes, ja que en funció de la dificultat hi apareixeràn més o menys 
+	 * cartes, la dificultat de joc, el nombre de parelles de cartes que compondràn el tauler, la connexió amb el servidor, el client que està 
+	 * jugant, el controlador del menú principal del programa client, i la variable de comprovació si s'ha connectat com a usuari convidat 
+	 * o com a usuari registrat. 
+	 *
+	 */
+    private List<CardMachine> cards;
+    private CardMachine selectedCard;
+    private CardMachine c1;
+    private CardMachine c2;
+    private Timer t;
+    private Machine machine;
+    private int maquinaturn;
+    private int difficulty;
+    private int comptador;
+    private int points,isGuest;
+    private JLabel jtPuntuacio;
+    private int pointsMachine;
+    private JLabel jtPuntuacioMaquina;
+    private ServerConnection sConnect;
+    private Client client;
+    private ButtonController controler;
+    
+
+    public BoardMachine(int filas, int columnas, int pairs,ServerConnection sConnect,Client client,int isGuest,ButtonController controler){
+    	
+        List<CardMachine> cardsList = new ArrayList<CardMachine>();
+        List<Integer> cardVals = new ArrayList<Integer>();
+        this.sConnect=sConnect;
+        this.client = client;
+        this.isGuest =isGuest;
+        this.controler = controler;
+        
+        for (int i = 0; i < pairs; i++){
+            cardVals.add(i);
+            cardVals.add(i);
+        }
+        
+        //mezcla los valores
+        Collections.shuffle(cardVals);
+
+        for (int val : cardVals){
+            final CardMachine c = new CardMachine();
+            c.setId(val);
+            c.addActionListener(new ActionListener(){
+                public void actionPerformed(ActionEvent ae){
+                    selectedCard = c;
+                    doTurn();
+                }
+            });
+            cardsList.add(c);
+        }
+       
+        this.cards = cardsList;
+        
+        //set up the timer
+        t = new Timer(750, new ActionListener(){
+            public void actionPerformed(ActionEvent ae){
+            	checkCards();
+            }
+        });
+
+        t.setRepeats(false);
+
+        JPanel pane = new JPanel();
+        pane.setLayout(new GridLayout(filas, columnas));
+        
+        jtPuntuacio = new JLabel();
+		jtPuntuacio.setText("Punts: "+ points);
+        jtPuntuacioMaquina = new JLabel();
+		jtPuntuacioMaquina.setText("Machine Punts:" + pointsMachine);
+		this.repaint();
+		jtPuntuacio.setFont(new Font("Futura", Font.BOLD, 30));
+		jtPuntuacioMaquina.setFont(new Font("Futura", Font.BOLD, 30));
+		JLabel jtUsuari= new JLabel();
+		if (isGuest != 1)jtUsuari.setText("  User: " + client.getNickname());
+		if (isGuest == 1)jtUsuari.setText("  User: Guest");
+		jtUsuari.setFont(new Font("Futura", Font.BOLD, 30));
+		
+		
+		JPanel jpAux = new JPanel(new BorderLayout());
+		JPanel superior = new JPanel();
+	    superior.setLayout(new GridLayout(1, 3));
+		
+        //jpClock = new JPanel();
+        //JPanel jpPoints = new JPanel();
+   
+        superior.add(jtUsuari);
+        superior.add(jtPuntuacio);
+        superior.add(jtPuntuacioMaquina);
+        
+        jpAux.add(superior);
+        
+        this.getContentPane().add(jpAux, BorderLayout.PAGE_START);
+        this.getContentPane().add(pane, BorderLayout.CENTER);
+        		
+		for (CardMachine c : cards){
+            pane.add(c);
+        }
+        
+		setTitle("PLAYER VS.MACHINE");
+        this.maquinaturn = 2;
+    }
+    
+    public void windowClosing(WindowEvent e){
+    	controler.setButtonsActive();
+	}
+
+    /**
+     * El procediment doTurn s'encarrega de simular el moviment de girar les dues cartes seleccionades per l'usuari per tal de
+     * comprovar si aquestes són iguals o no. Al "girar" les cartes, aquestes mostraràn un dibuix assignat segons la id de la 
+     * carta que s'ha voltejat i del nivell seleccionat. Segons el nivell, ja que augmenta el nombre de cartes, els dibuixos a mostrar
+     * també canvien, ja que es necessitaràn més dibuixos i aquestos seràn més difícils de reconèixer segons augmenti la dificultat. 
+     * Aquest procés es realitza per les dues cartes. Un cop voltejades, es crida a la classe encarregada de comprovar si les cartes 
+     * seleccionades són iguals.
+     */
+    public void doTurn(){
+    	if (c1 == null && c2 == null){
+			c1 = selectedCard;
+			if (difficulty == 0){
+				switch (c1.getId()){
+				case 0:
+					try{
+						File file = new File("resources/c0.jpg");
+						Image i = ImageIO.read(file);
+						c1.setIcon(new ImageIcon(i));
+					} catch (IOException ex){}	
+					break;
+				case 1:
+					try{
+						File file = new File("resources/c1.jpg");
+						Image i = ImageIO.read(file);
+						c1.setIcon(new ImageIcon(i));
+					} catch (IOException ex){}	
+					break;
+				case 2:
+					try{
+						File file = new File("resources/c2.jpg");
+						Image i = ImageIO.read(file);
+						c1.setIcon(new ImageIcon(i));
+					} catch (IOException ex){}	
+					break;
+				case 3:
+					try{
+						File file = new File("resources/c3.jpg");
+						Image i = ImageIO.read(file);
+						c1.setIcon(new ImageIcon(i));
+					} catch (IOException ex){}	
+					break;
+				case 4:
+					try{
+						File file = new File("resources/c4.jpg");
+						Image i = ImageIO.read(file);
+						c1.setIcon(new ImageIcon(i));;
+					} catch (IOException ex){}	
+					break;
+				}
+	    	}
+			
+			if (difficulty == 1){
+			switch (c1.getId()){
+			case 0:
+				try{
+					File file = new File("resources/0.jpg");
+					Image i = ImageIO.read(file);
+					c1.setIcon(new ImageIcon(i));
+				} catch (IOException ex){}	
+				break;
+			case 1:
+				try{
+					File file = new File("resources/1.jpg");
+					Image i = ImageIO.read(file);
+					c1.setIcon(new ImageIcon(i));
+				} catch (IOException ex){}	
+				break;
+			case 2:
+				try{
+					File file = new File("resources/2.jpg");
+					Image i = ImageIO.read(file);
+					c1.setIcon(new ImageIcon(i));
+				} catch (IOException ex){}	
+				break;
+			case 3:
+				try{
+					File file = new File("resources/3.jpg");
+					Image i = ImageIO.read(file);
+					c1.setIcon(new ImageIcon(i));
+				} catch (IOException ex){}	
+				break;
+			case 4:
+				try{
+					File file = new File("resources/4.jpg");
+					Image i = ImageIO.read(file);
+					c1.setIcon(new ImageIcon(i));;
+				} catch (IOException ex){}	
+				break;
+			case 5:
+				try{
+					File file = new File("resources/5.jpg");
+					Image i = ImageIO.read(file);
+					c1.setIcon(new ImageIcon(i));
+				} catch (IOException ex){}	
+				break;
+			case 6:
+				try{
+					File file = new File("resources/6.jpg");
+					Image i = ImageIO.read(file);
+					c1.setIcon(new ImageIcon(i));
+				} catch (IOException ex){}	
+				break;
+			case 7:
+				try{
+					File file = new File("resources/d7.jpg");
+					Image i = ImageIO.read(file);
+					c1.setIcon(new ImageIcon(i));
+				} catch (IOException ex){}	
+				break;
+			case 8:
+				try{
+					File file = new File("resources/8.jpg");
+					Image i = ImageIO.read(file);
+					c1.setIcon(new ImageIcon(i));
+				} catch (IOException ex){}	
+				break;
+			case 9:
+				try{
+					File file = new File("resources/9.jpg");
+					Image i = ImageIO.read(file);
+					c1.setIcon(new ImageIcon(i));
+				} catch (IOException ex){}	
+				break;
+			}
+    	}
+			if (difficulty == 2){
+				switch (c1.getId()){
+				case 0:
+					try{
+						File file = new File("resources/d0.jpg");
+						Image i = ImageIO.read(file);
+						c1.setIcon(new ImageIcon(i));
+					} catch (IOException ex){}	
+					break;
+				case 1:
+					try{
+						File file = new File("resources/d1.jpg");
+						Image i = ImageIO.read(file);
+						c1.setIcon(new ImageIcon(i));
+					} catch (IOException ex){}	
+					break;
+				case 2:
+					try{
+						File file = new File("resources/d2.jpg");
+						Image i = ImageIO.read(file);
+						c1.setIcon(new ImageIcon(i));
+					} catch (IOException ex){}	
+					break;
+				case 3:
+					try{
+						File file = new File("resources/d3.jpg");
+						Image i = ImageIO.read(file);
+						c1.setIcon(new ImageIcon(i));
+					} catch (IOException ex){}	
+					break;
+				case 4:
+					try{
+						File file = new File("resources/d4.jpg");
+						Image i = ImageIO.read(file);
+						c1.setIcon(new ImageIcon(i));;
+					} catch (IOException ex){}	
+					break;
+				case 5:
+					try{
+						File file = new File("resources/d5.jpg");
+						Image i = ImageIO.read(file);
+						c1.setIcon(new ImageIcon(i));
+					} catch (IOException ex){}	
+					break;
+				case 6:
+					try{
+						File file = new File("resources/d6.jpg");
+						Image i = ImageIO.read(file);
+						c1.setIcon(new ImageIcon(i));
+					} catch (IOException ex){}	
+					break;
+				case 7:
+					try{
+						File file = new File("resources/d7.jpg");
+						Image i = ImageIO.read(file);
+						c1.setIcon(new ImageIcon(i));
+					} catch (IOException ex){}	
+					break;
+				case 8:
+					try{
+						File file = new File("resources/d8.jpg");
+						Image i = ImageIO.read(file);
+						c1.setIcon(new ImageIcon(i));
+					} catch (IOException ex){}	
+					break;
+				case 9:
+					try{
+						File file = new File("resources/d9.jpg");
+						Image i = ImageIO.read(file);
+						c1.setIcon(new ImageIcon(i));
+					} catch (IOException ex){}	
+					break;
+				case 10:
+					try{
+						File file = new File("resources/d10.jpg");
+						Image i = ImageIO.read(file);
+						c1.setIcon(new ImageIcon(i));
+					} catch (IOException ex){}	
+					break;
+				case 11:
+					try{
+						File file = new File("resources/d11.jpg");
+						Image i = ImageIO.read(file);
+						c1.setIcon(new ImageIcon(i));
+					} catch (IOException ex){}	
+					break;
+				case 12:
+					try{
+						File file = new File("resources/d12.jpg");
+						Image i = ImageIO.read(file);
+						c1.setIcon(new ImageIcon(i));
+					} catch (IOException ex){}	
+					break;
+				case 13:
+					try{
+						File file = new File("resources/d13.jpg");
+						Image i = ImageIO.read(file);
+						c1.setIcon(new ImageIcon(i));
+					} catch (IOException ex){}	
+					break;
+				case 14:
+					try{
+						File file = new File("resources/d14.jpg");
+						Image i = ImageIO.read(file);
+						c1.setIcon(new ImageIcon(i));
+					} catch (IOException ex){}	
+					break;
+				
+				}
+	    	}
+
+		}
+
+		//Al pulsar la segona carta es mostren les dues durant un cert temps 
+		if (c1 != null && c1 != selectedCard && c2 == null){
+			c2 = selectedCard;
+			if(difficulty == 0){
+				switch (c2.getId()){
+				case 0:
+					try{
+						File file = new File("resources/c0.jpg");
+						Image i55 = ImageIO.read(file);
+						c2.setIcon(new ImageIcon(i55));
+					} catch (IOException ex){}	
+					break;
+				case 1:
+					try{
+						File file = new File("resources/c1.jpg");
+						Image i55 = ImageIO.read(file);
+						c2.setIcon(new ImageIcon(i55));
+					} catch (IOException ex){}	
+					break;
+				case 2:
+					try{
+						File file = new File("resources/c2.jpg");
+						Image i55 = ImageIO.read(file);
+						c2.setIcon(new ImageIcon(i55));
+					} catch (IOException ex){}	
+					break;
+				case 3:
+					try{
+						File file = new File("resources/c3.jpg");
+						Image i55 = ImageIO.read(file);
+						c2.setIcon(new ImageIcon(i55));
+					} catch (IOException ex){}	
+					break;
+				case 4:
+					try{
+						File file = new File("resources/c4.jpg");
+						Image i55 = ImageIO.read(file);
+						c2.setIcon(new ImageIcon(i55));
+					} catch (IOException ex){}	
+					break;
+				}	
+			}
+			
+			if(difficulty == 1){
+			switch (c2.getId()){
+			case 0:
+				try{
+					File file = new File("resources/0.jpg");
+					Image i55 = ImageIO.read(file);
+					c2.setIcon(new ImageIcon(i55));
+				} catch (IOException ex){}	
+				break;
+			case 1:
+				try{
+					File file = new File("resources/1.jpg");
+					Image i55 = ImageIO.read(file);
+					c2.setIcon(new ImageIcon(i55));
+				} catch (IOException ex){}	
+				break;
+			case 2:
+				try{
+					File file = new File("resources/2.jpg");
+					Image i55 = ImageIO.read(file);
+					c2.setIcon(new ImageIcon(i55));
+				} catch (IOException ex){}	
+				break;
+			case 3:
+				try{
+					File file = new File("resources/3.jpg");
+					Image i55 = ImageIO.read(file);
+					c2.setIcon(new ImageIcon(i55));
+				} catch (IOException ex){}	
+				break;
+			case 4:
+				try{
+					File file = new File("resources/4.jpg");
+					Image i55 = ImageIO.read(file);
+					c2.setIcon(new ImageIcon(i55));
+				} catch (IOException ex){}	
+				break;
+			case 5:
+				try {
+					File file = new File("resources/5.jpg");
+					Image i55 = ImageIO.read(file);
+					c2.setIcon(new ImageIcon(i55));
+				} catch (IOException ex){}
+
+				break;
+			case 6:
+				try {
+					File file = new File("resources/6.jpg");
+					Image i55 = ImageIO.read(file);
+					c2.setIcon(new ImageIcon(i55));
+				} catch (IOException ex){}
+
+				break;
+			case 7:
+				try {
+					File file = new File("resources/7.jpg");
+					Image i55 = ImageIO.read(file);
+					c2.setIcon(new ImageIcon(i55));
+				} catch (IOException ex){}
+				break;
+			case 8:
+				try {
+					File file = new File("resources/8.jpg");
+					Image i55 = ImageIO.read(file);
+					c2.setIcon(new ImageIcon(i55));
+				} catch (IOException ex){}
+				break;
+			case 9:
+				try {
+					File file = new File("resources/9.jpg");
+					Image i55 = ImageIO.read(file);
+					c2.setIcon(new ImageIcon(i55));
+				} catch (IOException ex){}
+				break;
+			
+			}	
+			}
+			if(difficulty == 2){
+				switch (c2.getId()){
+				case 0:
+					try{
+						File file = new File("resources/d0.jpg");
+						Image i55 = ImageIO.read(file);
+						c2.setIcon(new ImageIcon(i55));
+					} catch (IOException ex){}	
+					break;
+				case 1:
+					try{
+						File file = new File("resources/d1.jpg");
+						Image i55 = ImageIO.read(file);
+						c2.setIcon(new ImageIcon(i55));
+					} catch (IOException ex){}	
+					break;
+				case 2:
+					try{
+						File file = new File("resources/d2.jpg");
+						Image i55 = ImageIO.read(file);
+						c2.setIcon(new ImageIcon(i55));
+					} catch (IOException ex){}	
+					break;
+				case 3:
+					try{
+						File file = new File("resources/d3.jpg");
+						Image i55 = ImageIO.read(file);
+						c2.setIcon(new ImageIcon(i55));
+					} catch (IOException ex){}	
+					break;
+				case 4:
+					try{
+						File file = new File("resources/d4.jpg");
+						Image i55 = ImageIO.read(file);
+						c2.setIcon(new ImageIcon(i55));
+					} catch (IOException ex){}	
+					break;
+				case 5:
+					try {
+						File file = new File("resources/d5.jpg");
+						Image i55 = ImageIO.read(file);
+						c2.setIcon(new ImageIcon(i55));
+					} catch (IOException ex){}
+
+					break;
+				case 6:
+					try {
+						File file = new File("resources/d6.jpg");
+						Image i55 = ImageIO.read(file);
+						c2.setIcon(new ImageIcon(i55));
+					} catch (IOException ex){}
+
+					break;
+				case 7:
+					try {
+						File file = new File("resources/d7.jpg");
+						Image i55 = ImageIO.read(file);
+						c2.setIcon(new ImageIcon(i55));
+					} catch (IOException ex){}
+					break;
+				case 8:
+					try {
+						File file = new File("resources/d8.jpg");
+						Image i55 = ImageIO.read(file);
+						c2.setIcon(new ImageIcon(i55));
+					} catch (IOException ex){}
+					break;
+				case 9:
+					try {
+						File file = new File("resources/d9.jpg");
+						Image i55 = ImageIO.read(file);
+						c2.setIcon(new ImageIcon(i55));
+					} catch (IOException ex){}
+					break;
+				case 10:
+					try {
+						File file = new File("resources/d10.jpg");
+						Image i55 = ImageIO.read(file);
+						c2.setIcon(new ImageIcon(i55));
+					} catch (IOException ex){}
+					break;
+				case 11:
+					try {
+						File file = new File("resources/d11.jpg");
+						Image i55 = ImageIO.read(file);
+						c2.setIcon(new ImageIcon(i55));
+					} catch (IOException ex){}
+					break;
+				
+				case 12:
+					try {
+						File file = new File("resources/d12.jpg");
+						Image i55 = ImageIO.read(file);
+						c2.setIcon(new ImageIcon(i55));
+					} catch (IOException ex){}
+					break;
+				case 13:
+					try {
+						File file = new File("resources/d13.jpg");
+						Image i55 = ImageIO.read(file);
+						c2.setIcon(new ImageIcon(i55));
+					} catch (IOException ex){}
+					break;
+				case 14:
+					try {
+						File file = new File("resources/d14.jpg");
+						Image i55 = ImageIO.read(file);
+						c2.setIcon(new ImageIcon(i55));
+					} catch (IOException ex){}
+					break;
+				
+				}	
+			}
+			t.start();
+		}
+    }
+
+    /**
+     * El procediment checkCards s'encarrega de comprovar si les cartes seleccionades durant doTurn tenen la mateixa id, és a dir,
+     * són iguals, o no. En cas de que les id coincideixi, les cartes, programades com a botons es desactiven per a que no puguin 
+     * ser seleccionades i el seu dibux queda descativat, apareixent més fosc a al finestra, tot seguit s'eliminen de la llista de 
+     * cartes de la classe per a que, durant el torn de la màquina aquesta no les pugui voltejar accidentalment. Després s'actualitzen
+     * els punts de l'usuari i, en cas de que no quedin més cartes es mostra una finestra dient que s'ha acabat la partida i s'afegeix
+     * un bonus a la puntuació del usuari en funció de la dificultat en la que s'ha jugat. En cas de que no s'hagui acabat la partida i 
+     * les cartes siguin iguals, el jugador podrà tornar a jugar, en cas de que les carte no siguin iguals, l'usuari finalitzarà el seu torn
+     * i començarà el torn de la màquina. 
+     */
+    public void checkCards(){
+    	machine = new Machine();
+        if (c1.getId() == c2.getId()){//match condition
+            c1.setEnabled(false); //disables the button
+            c2.setEnabled(false);
+            c1.setMatched(true); //flags the button as having been matched
+            c2.setMatched(true);
+            for (int i = 0; i< cards.size(); i++){
+            	if (cards.get(i).getId() == c1.getId()){
+            		cards.remove(i);
+            	}
+            }
+            for (int i = 0; i< cards.size(); i++){
+            	if (cards.get(i).getId() == c2.getId()){
+            		cards.remove(i);
+            	}
+            }
+            points += 10;
+            this.repaint();
+            jtPuntuacio.setText("Punts "+ points);
+            c1 = null; //reset c1 and c2
+            c2 = null;
+           
+            if (this.isGameWon()){
+            	int bonus = 0;
+            	if(difficulty == 0){
+            		points += 10;
+            		bonus = 10;
+            	}
+            	if (difficulty == 1){
+            		points += 20;
+            		bonus = 20;
+            	}
+            	if(difficulty == 2){
+            		points += 30;
+            		bonus = 30;
+            	}
+            	String result = " ";
+            	if (points > pointsMachine){
+            		result = "\n YOU WIN!!!!";
+            	}else{
+            		result = "\n YOU LOOSE!!";
+            	}
+            	JOptionPane.showMessageDialog(this,result + "\n Bonus: " + bonus +"\n Score:" + points );
+                
+                this.setVisible(false);
+                this.setDefaultCloseOperation(EXIT_ON_CLOSE);
+            	
+            }
+          
+          }else{
+        	c1.setIcon(null); //'hides' text
+            c2.setIcon(null);
+            try {
+				endTurn();
+			} catch (IOException e) {}
+        }
+        
+    }
+    
+    /**
+     * El procediment resetCards s'encarrega de resetejar els valors de les cartes c1 i c2 per tal de que es puguin
+     * tornar a seleccionar en un altre moment.
+     */
+    public void resetCards() {
+      c1 = null; //reset c1 and c2
+      c2 = null;    	
+    }
+    
+    /**
+     * MachinePlay és el procediment encarregat de que jugui la màquina. En funció de la dificultat assiganada al trucar
+     * al joc, aquest cridarà a una classe different, ja que la memòria de la màquina serà millor en funció de la dificultat
+     * escollida. 
+     */
+    public void MachinePlay(){
+    	if(difficulty == 0){
+    	  Machine machine = new Machine();
+    	  machine.setBoard(this);
+    	  machine.setCards(cards);
+    	  machine.tira(); 
+    	}
+    	
+    	if(difficulty == 1){
+    		
+    		MachineHard machineNormal = new MachineHard();
+    		machineNormal.setBoard(this);
+    		machineNormal.setCards(cards);
+    		machineNormal.tira(comptador);
+    		comptador --;
+		
+    	} 
+    	
+    	if(difficulty == 2){
+    		
+	    		MachineHard machineHard = new MachineHard();
+	    		machineHard.setBoard(this);
+	    		machineHard.setCards(cards);
+	    		machineHard.tira(comptador);
+	    		comptador --;
+    		
+    	} 
+    }
+
+    public void endTurn() throws IOException{
+    	MachinePlay();
+    }
+    
+    /**
+     * La funció isGameWon s'encarrega de comprovar si la partida ja s'ha acabat o no. Per això comprova si totes
+     * les cartes ja han estat emparellades. En cas de que ho estiguin retornarà true, en cas contrari retornarà false.
+     * @return
+     */
+    public boolean isGameWon(){
+        for(CardMachine c: this.cards){
+            if (c.getMatched() == false){
+                return false;
+            }
+        }
+        return true;
+        
+    }
+    
+    public List<CardMachine> getCards() {
+    	return this.cards;
+    }
+        
+    public void setSelectedCard(CardMachine c){
+    	this.selectedCard = c;
+    }
+   
+    /**
+     * El procediment ResetC1 com el seu nom indica s'encarrega de resetejar la carta c1 per tal de que aquesta pugui
+     * ser seleccionada en algún altre moment de la partida.
+     */
+    public void ResetC1 (){
+    	this.c1 = null;
+    }
+    
+    /**
+     * El procediment ResetC2 com el seu nom indica s'encarrega de resetejar la carta c2 per tal de que aquesta pugui
+     * ser seleccionada en algún altre moment de la partida.
+     */
+    public void ResetC2 (){
+    	this.c2 = null;
+    }
+    
+    public void setC1 (CardMachine c){
+    	this.c1 = c;
+    	if (difficulty == 0){
+        	switch (c1.getId()){
+    		case 0:
+    			try{
+    				File file = new File("resources/c0.jpg");
+    				Image i = ImageIO.read(file);
+    				c1.setIcon(new ImageIcon(i));
+    			} catch (IOException ex){}	
+    			break;
+    		case 1:
+    			try{
+    				File file = new File("resources/c1.jpg");
+    				Image i = ImageIO.read(file);
+    				c1.setIcon(new ImageIcon(i));
+    			} catch (IOException ex){}	
+    			break;
+    		case 2:
+    			try{
+    				File file = new File("resources/c2.jpg");
+    				Image i = ImageIO.read(file);
+    				c1.setIcon(new ImageIcon(i));
+    			} catch (IOException ex){}	
+    			break;
+    		case 3:
+    			try{
+    				File file = new File("resources/c3.jpg");
+    				Image i = ImageIO.read(file);
+    				c1.setIcon(new ImageIcon(i));
+    			} catch (IOException ex){}	
+    			break;
+    		case 4:
+    			try{
+    				File file = new File("resources/c4.jpg");
+    				Image i = ImageIO.read(file);
+    				c1.setIcon(new ImageIcon(i));;
+    			} catch (IOException ex){}	
+    			break;
+    		
+    		}
+        }
+    	
+    	if (difficulty == 1){
+    	switch (c1.getId()){
+		case 0:
+			try{
+				File file = new File("resources/0.jpg");
+				Image i = ImageIO.read(file);
+				c1.setIcon(new ImageIcon(i));
+			} catch (IOException ex){}	
+			break;
+		case 1:
+			try{
+				File file = new File("resources/1.jpg");
+				Image i = ImageIO.read(file);
+				c1.setIcon(new ImageIcon(i));
+			} catch (IOException ex){}	
+			break;
+		case 2:
+			try{
+				File file = new File("resources/2.jpg");
+				Image i = ImageIO.read(file);
+				c1.setIcon(new ImageIcon(i));
+			} catch (IOException ex){}	
+			break;
+		case 3:
+			try{
+				File file = new File("resources/3.jpg");
+				Image i = ImageIO.read(file);
+				c1.setIcon(new ImageIcon(i));
+			} catch (IOException ex){}	
+			break;
+		case 4:
+			try{
+				File file = new File("resources/4.jpg");
+				Image i = ImageIO.read(file);
+				c1.setIcon(new ImageIcon(i));;
+			} catch (IOException ex){}	
+			break;
+		case 5:
+			try{
+				File file = new File("resources/5.jpg");
+				Image i = ImageIO.read(file);
+				c1.setIcon(new ImageIcon(i));
+			} catch (IOException ex){}	
+			break;
+		case 6:
+			try{
+				File file = new File("resources/6.jpg");
+				Image i = ImageIO.read(file);
+				c1.setIcon(new ImageIcon(i));
+			} catch (IOException ex){}	
+			break;
+		case 7:
+			try{
+				File file = new File("resources/7.jpg");
+				Image i = ImageIO.read(file);
+				c1.setIcon(new ImageIcon(i));
+			} catch (IOException ex){}	
+			break;
+		case 8:
+			try{
+				File file = new File("resources/8.jpg");
+				Image i = ImageIO.read(file);
+				c1.setIcon(new ImageIcon(i));
+			} catch (IOException ex){}	
+			break;
+		case 9:
+			try{
+				File file = new File("resources/9.jpg");
+				Image i = ImageIO.read(file);
+				c1.setIcon(new ImageIcon(i));
+			} catch (IOException ex){}	
+			break;
+		}
+    	}
+    	if (difficulty == 2){
+        	switch (c1.getId()){
+    		case 0:
+    			try{
+    				File file = new File("resources/d0.jpg");
+    				Image i = ImageIO.read(file);
+    				c1.setIcon(new ImageIcon(i));
+    			} catch (IOException ex){}	
+    			break;
+    		case 1:
+    			try{
+    				File file = new File("resources/d1.jpg");
+    				Image i = ImageIO.read(file);
+    				c1.setIcon(new ImageIcon(i));
+    			} catch (IOException ex){}	
+    			break;
+    		case 2:
+    			try{
+    				File file = new File("resources/d2.jpg");
+    				Image i = ImageIO.read(file);
+    				c1.setIcon(new ImageIcon(i));
+    			} catch (IOException ex){}	
+    			break;
+    		case 3:
+    			try{
+    				File file = new File("resources/d3.jpg");
+    				Image i = ImageIO.read(file);
+    				c1.setIcon(new ImageIcon(i));
+    			} catch (IOException ex){}	
+    			break;
+    		case 4:
+    			try{
+    				File file = new File("resources/d4.jpg");
+    				Image i = ImageIO.read(file);
+    				c1.setIcon(new ImageIcon(i));;
+    			} catch (IOException ex){}	
+    			break;
+    		case 5:
+    			try{
+    				File file = new File("resources/d5.jpg");
+    				Image i = ImageIO.read(file);
+    				c1.setIcon(new ImageIcon(i));
+    			} catch (IOException ex){}	
+    			break;
+    		case 6:
+    			try{
+    				File file = new File("resources/6.jpg");
+    				Image i = ImageIO.read(file);
+    				c1.setIcon(new ImageIcon(i));
+    			} catch (IOException ex){}	
+    			break;
+    		case 7:
+    			try{
+    				File file = new File("resources/d7.jpg");
+    				Image i = ImageIO.read(file);
+    				c1.setIcon(new ImageIcon(i));
+    			} catch (IOException ex){}	
+    			break;
+    		case 8:
+    			try{
+    				File file = new File("resources/d8.jpg");
+    				Image i = ImageIO.read(file);
+    				c1.setIcon(new ImageIcon(i));
+    			} catch (IOException ex){}	
+    			break;
+    		case 9:
+    			try{
+    				File file = new File("resources/d9.jpg");
+    				Image i = ImageIO.read(file);
+    				c1.setIcon(new ImageIcon(i));
+    			} catch (IOException ex){}	
+    			break;
+    		case 10:
+    			try{
+    				File file = new File("resources/d10.jpg");
+    				Image i = ImageIO.read(file);
+    				c1.setIcon(new ImageIcon(i));
+    			} catch (IOException ex){}	
+    			break;
+    		case 11:
+    			try{
+    				File file = new File("resources/d11.jpg");
+    				Image i = ImageIO.read(file);
+    				c1.setIcon(new ImageIcon(i));
+    			} catch (IOException ex){}	
+    			break;
+    		case 12:
+    			try{
+    				File file = new File("resources/d12.jpg");
+    				Image i = ImageIO.read(file);
+    				c1.setIcon(new ImageIcon(i));
+    			} catch (IOException ex){}	
+    			break;
+    		case 13:
+    			try{
+    				File file = new File("resources/d13.jpg");
+    				Image i = ImageIO.read(file);
+    				c1.setIcon(new ImageIcon(i));
+    			} catch (IOException ex){}	
+    			break;
+    		case 14:
+    			try{
+    				File file = new File("resources/d14.jpg");
+    				Image i = ImageIO.read(file);
+    				c1.setIcon(new ImageIcon(i));
+    			} catch (IOException ex){}	
+    			break;
+    		}
+        }
+    }
+    
+    public void setC2 (CardMachine c){
+    	this.c2 = c;
+    	
+    	if(difficulty == 0){
+        	switch (c2.getId()){
+    		case 0:
+    			try{
+    				File file = new File("resources/c0.jpg");
+    				Image i55 = ImageIO.read(file);
+    				c2.setIcon(new ImageIcon(i55));
+    			} catch (IOException ex){}	
+    			break;
+    		case 1:
+    			try{
+    				File file = new File("resources/c1.jpg");
+    				Image i55 = ImageIO.read(file);
+    				c2.setIcon(new ImageIcon(i55));
+    			} catch (IOException ex){}	
+    			break;
+    		case 2:
+    			try{
+    				File file = new File("resources/c2.jpg");
+    				Image i55 = ImageIO.read(file);
+    				c2.setIcon(new ImageIcon(i55));
+    			} catch (IOException ex){}	
+    			break;
+    		case 3:
+    			try{
+    				File file = new File("resources/c3.jpg");
+    				Image i55 = ImageIO.read(file);
+    				c2.setIcon(new ImageIcon(i55));
+    			} catch (IOException ex){}	
+    			break;
+    		case 4:
+    			try{
+    				File file = new File("resources/c4.jpg");
+    				Image i55 = ImageIO.read(file);
+    				c2.setIcon(new ImageIcon(i55));
+    			} catch (IOException ex){}	
+    			break;
+    		
+    		}
+        }
+    	
+    	if(difficulty == 1){
+    	switch (c2.getId()){
+		case 0:
+			try{
+				File file = new File("resources/0.jpg");
+				Image i55 = ImageIO.read(file);
+				c2.setIcon(new ImageIcon(i55));
+			} catch (IOException ex){}	
+			break;
+		case 1:
+			try{
+				File file = new File("resources/1.jpg");
+				Image i55 = ImageIO.read(file);
+				c2.setIcon(new ImageIcon(i55));
+			} catch (IOException ex){}	
+			break;
+		case 2:
+			try{
+				File file = new File("resources/2.jpg");
+				Image i55 = ImageIO.read(file);
+				c2.setIcon(new ImageIcon(i55));
+			} catch (IOException ex){}	
+			break;
+		case 3:
+			try{
+				File file = new File("resources/3.jpg");
+				Image i55 = ImageIO.read(file);
+				c2.setIcon(new ImageIcon(i55));
+			} catch (IOException ex){}	
+			break;
+		case 4:
+			try{
+				File file = new File("resources/4.jpg");
+				Image i55 = ImageIO.read(file);
+				c2.setIcon(new ImageIcon(i55));
+			} catch (IOException ex){}	
+			break;
+		case 5:
+			try {
+				File file = new File("resources/5.jpg");
+				Image i55 = ImageIO.read(file);
+				c2.setIcon(new ImageIcon(i55));
+			} catch (IOException ex){}
+
+			break;
+		case 6:
+			try {
+				File file = new File("resources/6.jpg");
+				Image i55 = ImageIO.read(file);
+				c2.setIcon(new ImageIcon(i55));
+			} catch (IOException ex){}
+
+			break;
+		case 7:
+			try {
+				File file = new File("resources/7.jpg");
+				Image i55 = ImageIO.read(file);
+				c2.setIcon(new ImageIcon(i55));
+			} catch (IOException ex){}
+			break;
+		case 8:
+			try {
+				File file = new File("resources/8.jpg");
+				Image i55 = ImageIO.read(file);
+				c2.setIcon(new ImageIcon(i55));
+			} catch (IOException ex){}
+			break;
+		case 9:
+			try {
+				File file = new File("resources/9.jpg");
+				Image i55 = ImageIO.read(file);
+				c2.setIcon(new ImageIcon(i55));
+			} catch (IOException ex){}
+			break;
+		
+		}	
+    }
+    	if(difficulty == 2){
+        	switch (c2.getId()){
+    		case 0:
+    			try{
+    				File file = new File("resources/d0.jpg");
+    				Image i55 = ImageIO.read(file);
+    				c2.setIcon(new ImageIcon(i55));
+    			} catch (IOException ex){}	
+    			break;
+    		case 1:
+    			try{
+    				File file = new File("resources/d1.jpg");
+    				Image i55 = ImageIO.read(file);
+    				c2.setIcon(new ImageIcon(i55));
+    			} catch (IOException ex){}	
+    			break;
+    		case 2:
+    			try{
+    				File file = new File("resources/d2.jpg");
+    				Image i55 = ImageIO.read(file);
+    				c2.setIcon(new ImageIcon(i55));
+    			} catch (IOException ex){}	
+    			break;
+    		case 3:
+    			try{
+    				File file = new File("resources/d3.jpg");
+    				Image i55 = ImageIO.read(file);
+    				c2.setIcon(new ImageIcon(i55));
+    			} catch (IOException ex){}	
+    			break;
+    		case 4:
+    			try{
+    				File file = new File("resources/d4.jpg");
+    				Image i55 = ImageIO.read(file);
+    				c2.setIcon(new ImageIcon(i55));
+    			} catch (IOException ex){}	
+    			break;
+    		case 5:
+    			try {
+    				File file = new File("resources/d5.jpg");
+    				Image i55 = ImageIO.read(file);
+    				c2.setIcon(new ImageIcon(i55));
+    			} catch (IOException ex){}
+
+    			break;
+    		case 6:
+    			try {
+    				File file = new File("resources/d6.jpg");
+    				Image i55 = ImageIO.read(file);
+    				c2.setIcon(new ImageIcon(i55));
+    			} catch (IOException ex){}
+
+    			break;
+    		case 7:
+    			try {
+    				File file = new File("resources/d7.jpg");
+    				Image i55 = ImageIO.read(file);
+    				c2.setIcon(new ImageIcon(i55));
+    			} catch (IOException ex){}
+    			break;
+    		case 8:
+    			try {
+    				File file = new File("resources/d8.jpg");
+    				Image i55 = ImageIO.read(file);
+    				c2.setIcon(new ImageIcon(i55));
+    			} catch (IOException ex){}
+    			break;
+    		case 9:
+    			try {
+    				File file = new File("resources/d9.jpg");
+    				Image i55 = ImageIO.read(file);
+    				c2.setIcon(new ImageIcon(i55));
+    			} catch (IOException ex){}
+    			break;
+    		case 10:
+    			try {
+    				File file = new File("resources/d10.jpg");
+    				Image i55 = ImageIO.read(file);
+    				c2.setIcon(new ImageIcon(i55));
+    			} catch (IOException ex){}
+    			break;
+    		case 11:
+    			try {
+    				File file = new File("resources/d11.jpg");
+    				Image i55 = ImageIO.read(file);
+    				c2.setIcon(new ImageIcon(i55));
+    			} catch (IOException ex){}
+    			break;
+    		case 12:
+    			try {
+    				File file = new File("resources/d12.jpg");
+    				Image i55 = ImageIO.read(file);
+    				c2.setIcon(new ImageIcon(i55));
+    			} catch (IOException ex){}
+    			break;
+    		case 13:
+    			try {
+    				File file = new File("resources/d13.jpg");
+    				Image i55 = ImageIO.read(file);
+    				c2.setIcon(new ImageIcon(i55));
+    			} catch (IOException ex){}
+    			break;
+    		case 14:
+    			try {
+    				File file = new File("resources/d14.jpg");
+    				Image i55 = ImageIO.read(file);
+    				c2.setIcon(new ImageIcon(i55));
+    			} catch (IOException ex){}
+    			break;
+    		}	
+        }
+    }
+    
+    public void setC1Blank (){
+    	this.c1.setIcon(null);
+    	this.repaint();
+    }
+   
+    public void setC2Blank (){
+    	this.c2.setIcon(null);
+    	this.repaint();
+    }
+    
+    /**
+     * Procediment encarregat de gestionar el final de la partida si la màquina gira les dues últimes cartes
+     * del tauler. Es comprova la puntuació obtinguda per l'usuari i la puntuació obtinguda per la màquina i se 
+     * li afegeix un bonus a la puntuació del jugador en funció de la dificultat en la que ha jugat. En funció de 
+     * qui guanyi, el missatge que es mostrarà serà diferent. 
+     */
+   public void MachineWin(){
+	   if (this.isGameWon()){
+		int bonus = 0;
+		if(difficulty == 0){
+       		points += 10;
+       		bonus = 10;
+       	}
+       	if (difficulty == 1){
+       		points += 20;
+       		bonus = 20;
+       	}
+       	if(difficulty == 2){
+       		points += 30;
+       		bonus = 30;
+       	}
+       	String result = " ";
+       	if (points > pointsMachine){
+       		result = "\n YOU WIN!!!!";
+       	}else{
+       		result = "\n YOU LOOSE!!";
+       	}
+       	VentanaError ve = new VentanaError(result + "\n Bonus: " + bonus +"\n Score:" + points, "GAME OVER");
+        
+    	ve.setControler(this.controler);
+    	ve.setVisible(true);
+       	/*JOptionPane.showMessageDialog(this, result  + "\n Bonus: +" + bonus + "\n Score:" + points);
+        this.setVisible(false);*/
+        this.setDefaultCloseOperation(EXIT_ON_CLOSE);
+    	
+       }
+   }
+   
+   /**
+    * Aquest procediment serveix per determinar si totes les cartes del tauler han estat emparellades o no.
+    * @return: variable tipus boolea que determina si encara queden cartes o no.
+    */
+   public boolean isGameLost(){
+	   for(CardMachine c: this.cards){
+           if (c.getMatched() == false){
+               return false;
+           }
+       }
+       return true;
+   }
+   
+   /**
+    * MachineEquals és el procediment encarregat de gestionar la partida en cas de que la màquina hagui emparellat
+    * dues cartes correctament.En cas de que es doni, la puntuació de la màquina augmenta, i les cartes que han estat 
+    * seleccionades es desactiven. Un cop desactivades, s'eliminen de la array de cartes aquelles que han estat emparellades
+    * per a que aquestes no puguin ser seleccionades per la màquina més endavant. 
+    */
+    public void MachineEquals(){
+    	 c1.setEnabled(false); //disables the button
+         c2.setEnabled(false);
+         c1.setMatched(true); //flags the button as having been matched
+         c2.setMatched(true);
+         for (int i = 0; i< cards.size(); i++){
+         	if (cards.get(i) == c1){
+         		cards.remove(i);
+         	}
+         	if (cards.get(i) == c2){
+         		cards.remove(i);
+         	}
+         }
+         pointsMachine += 10;
+ 		jtPuntuacioMaquina.setText("Machine Punts:" + pointsMachine);
+         machine.setCards(cards);
+         if (this.isGameWon()){
+        	 int bonus = 0;
+        	 if(difficulty == 0){
+         		points += 10;
+         		bonus = 10;
+         	}
+         	if (difficulty == 1){
+         		points += 20;
+         		bonus = 20;
+         	}
+         	if(difficulty == 2){
+         		points += 30;
+         		bonus = 30;
+         	}
+         	String result = " ";
+         	if (points > pointsMachine){
+         		result = "\n YOU WIN!!!!";
+         	}else{
+         		result = "\n YOU LOOSE!!";
+         	}
+            JOptionPane.showMessageDialog(this, result + "\n Bonus: +" + bonus +"\n Score:" + points);
+            this.setVisible(false);
+            this.setDefaultCloseOperation(EXIT_ON_CLOSE);
+         }
+    }
+    
+    public void setLevel (int level){
+    	this.difficulty = level;
+    	if (level == 1){
+    		this.comptador = 4;
+    	}
+    	if (level == 2){
+    		this.comptador = 8;
+    	}
+    }
+    
+    public void setPoints (){
+    	this.points = 0;
+    	this.pointsMachine = 0;
+    }
+    
+    public int getEarnedPoints(){
+    	return this.points;
+    } 
+    
+    public void setController(ButtonController controller){
+    	this.controler = controller;
+    }
+    
+    /**
+     * Aquesta funció determina si la partida s'ha acabat.
+     * @return: Boolea que determina l'estat de la partida.
+     */
+    public boolean isGameEnd(){
+    	return (this.isGameLost() || this.isGameWon());
+    }
+
+	@Override
+	public void windowOpened(WindowEvent e) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void windowClosed(WindowEvent e) {
+		// TODO Auto-generated method stub
+		controler.setButtonsActive();
+	}
+
+	@Override
+	public void windowIconified(WindowEvent e) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void windowDeiconified(WindowEvent e) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void windowActivated(WindowEvent e) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void windowDeactivated(WindowEvent e) {
+		// TODO Auto-generated method stub
+		
+	}
+}
+    
+

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<project default="javadoc">
+    <target name="javadoc">
+        <javadoc access="public" author="true" classpath="../lib/miglayout-4.0.jar:../MySQL_Test/lib/mysql-connector-java-5.1.18-bin.jar:../lib/gson-2.6.2.jar" destdir="" doctitle="JavaDoc" nodeprecated="false" nodeprecatedlist="false" noindex="false" nonavbar="false" notree="false" packagenames="network,controller,view,model" source="1.8" sourcepath="../src" splitindex="true" use="true" version="true">
+            <link href="file:/Users/noa/Desktop/B3/Programari/Memory-Server-Final/doc/"/>
+            <link href="https://docs.oracle.com/javase/8/docs/api/"/>
+        </javadoc>
+    </target>
+</project>
